@@ -187,6 +187,8 @@ int kvm__get_vm_type(struct kvm *kvm)
 	if (ipa_bits > max_ipa_bits)
 		die("Memory too large for this system (needs %d bits, %d available)", ipa_bits, max_ipa_bits);
 
+	kvm->arch.ipa_bits = ipa_bits;
+
 	return vm_type | KVM_VM_TYPE_ARM_IPA_SIZE(ipa_bits);
 }
 
