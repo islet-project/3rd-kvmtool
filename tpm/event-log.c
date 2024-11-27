@@ -272,7 +272,7 @@ int tpm_event_log_add_image(enum kvm_image_type image_type, const u8 *host_addr,
 	struct uefi_platform_firmware_blob2_head *head;
 	struct uefi_platform_firmware_blob2_tail *tail;
 
-	pr_debug("Adding image %d (%p -> 0x%lx 0x%lx) to event log",
+	pr_debug("Adding image %d (%p -> 0x%llx 0x%lx) to event log",
 		 image_type, host_addr, base, size);
 
 	if (image_type >= KVM_IMAGE_TYPE_MAX)
