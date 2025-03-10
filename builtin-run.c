@@ -145,6 +145,18 @@ static int mem_parser(const struct option *opt, const char *arg, int unset)
 	return 0;
 }
 
+static int ipc_dir_parser(const struct option *opt, const char *arg, int unset)
+{
+	struct stat st;
+
+	if (stat(arg, &st) != 0 || !S_ISDIR(st.st_mode))
+		die("%s is not a directory or does not exist\n", arg);
+
+	kvm__set_dir(arg);
+
+	return 0;
+}
+
 static int loglevel_parser(const struct option *opt, const char *arg, int unset)
 {
 	if (strcmp(opt->long_name, "debug") == 0) {
@@ -182,6 +194,9 @@ static int loglevel_parser(const struct option *opt, const char *arg, int unset)
 	" in megabytes (M)"
 #endif
 
+#define IPC_DIR_HELP_SHORT	"dir"
+#define IPC_DIR_HELP_LONG	"Change the default ipc dir"
+
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64) || defined(CONFIG_RISCV)
 #define VIRTIO_TRANS_OPT_HELP_SHORT    "[pci|pci-legacy|mmio|mmio-legacy]"
 #else
@@ -196,6 +211,8 @@ static int loglevel_parser(const struct option *opt, const char *arg, int unset)
 	OPT_INTEGER('c', "cpus", &(cfg)->nrcpus, "Number of CPUs"),	\
 	OPT_CALLBACK('m', "mem", NULL, MEM_OPT_HELP_SHORT,		\
 		     MEM_OPT_HELP_LONG, mem_parser, kvm),		\
+	OPT_CALLBACK('\0', "ipc-dir", NULL, IPC_DIR_HELP_SHORT,		\
+		     IPC_DIR_HELP_LONG, ipc_dir_parser, kvm),		\
 	OPT_CALLBACK('d', "disk", kvm, "image or rootfs_dir", "Disk "	\
 			" image or rootfs directory", img_name_parser,	\
 			kvm),						\
