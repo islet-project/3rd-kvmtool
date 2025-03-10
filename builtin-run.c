@@ -197,6 +197,9 @@ static int loglevel_parser(const struct option *opt, const char *arg, int unset)
 #define IPC_DIR_HELP_SHORT	"dir"
 #define IPC_DIR_HELP_LONG	"Change the default ipc dir"
 
+#define TERM_FILE_HELP_SHORT "n=<number>,in=<path>,out=<path>"
+#define TERM_FILE_HELP_LONG "Use a file as backend for nth terminal"
+
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64) || defined(CONFIG_RISCV)
 #define VIRTIO_TRANS_OPT_HELP_SHORT    "[pci|pci-legacy|mmio|mmio-legacy]"
 #else
@@ -213,6 +216,8 @@ static int loglevel_parser(const struct option *opt, const char *arg, int unset)
 		     MEM_OPT_HELP_LONG, mem_parser, kvm),		\
 	OPT_CALLBACK('\0', "ipc-dir", NULL, IPC_DIR_HELP_SHORT,		\
 		     IPC_DIR_HELP_LONG, ipc_dir_parser, kvm),		\
+	OPT_CALLBACK('\0', "term-file", NULL, TERM_FILE_HELP_SHORT,	\
+		     TERM_FILE_HELP_LONG, term_file_parser, kvm),	\
 	OPT_CALLBACK('d', "disk", kvm, "image or rootfs_dir", "Disk "	\
 			" image or rootfs directory", img_name_parser,	\
 			kvm),						\

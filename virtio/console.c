@@ -28,6 +28,8 @@
 #define VIRTIO_CONSOLE_RX_QUEUE		0
 #define VIRTIO_CONSOLE_TX_QUEUE		1
 
+#define VIRTIO_CONSOLE_TERM	4
+
 struct con_dev {
 	struct mutex			mutex;
 
@@ -61,9 +63,9 @@ static void virtio_console__inject_interrupt_callback(struct kvm *kvm, void *par
 
 	vq = param;
 
-	if (term_readable(0) && virt_queue__available(vq)) {
+	if (term_readable(VIRTIO_CONSOLE_TERM) && virt_queue__available(vq)) {
 		head = virt_queue__get_iov(vq, iov, &out, &in, kvm);
-		len = term_getc_iov(kvm, iov, in, 0);
+		len = term_getc_iov(kvm, iov, in, VIRTIO_CONSOLE_TERM);
 		virt_queue__set_used_elem(vq, head, len);
 		cdev.vdev.ops->signal_vq(kvm, &cdev.vdev, vq - cdev.vqs);
 	}
@@ -73,9 +75,6 @@ static void virtio_console__inject_interrupt_callback(struct kvm *kvm, void *par
 
 void virtio_console__inject_interrupt(struct kvm *kvm)
 {
-	if (kvm->cfg.active_console != CONSOLE_VIRTIO)
-		return;
-
 	mutex_lock(&cdev.mutex);
 	if (cdev.vq_ready)
 		thread_pool__do_job(&cdev.jobs[VIRTIO_CONSOLE_RX_QUEUE]);
@@ -100,7 +99,7 @@ static void virtio_console_handle_callback(struct kvm *kvm, void *param)
 
 	while (virt_queue__available(vq)) {
 		head = virt_queue__get_iov(vq, iov, &out, &in, kvm);
-		len = term_putc_iov(iov, out, 0);
+		len = term_putc_iov(iov, out, VIRTIO_CONSOLE_TERM);
 		virt_queue__set_used_elem(vq, head, len);
 	}
 
@@ -224,9 +223,6 @@ static struct virtio_ops con_dev_virtio_ops = {
 int virtio_console__init(struct kvm *kvm)
 {
 	int r;
-
-	if (kvm->cfg.active_console != CONSOLE_VIRTIO)
-		return 0;
 
 	r = virtio_init(kvm, &cdev, &cdev.vdev, &con_dev_virtio_ops,
 			kvm->cfg.virtio_transport, PCI_DEVICE_ID_VIRTIO_CONSOLE,

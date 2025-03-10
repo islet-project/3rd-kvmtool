@@ -1,5 +1,9 @@
+#include <fcntl.h>
+#include <linux/limits.h>
 #include <poll.h>
 #include <stdbool.h>
+#include <string.h>
+#include <sys/types.h>
 #include <termios.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -168,14 +172,92 @@ int tty_parser(const struct option *opt, const char *arg, int unset)
 	return 0;
 }
 
+static void try_open_term(int n, char *path, int flags, int place, mode_t mode)
+{
+	if (n >= TERM_MAX_DEVS)
+		die("Only %d terms are available\n", TERM_MAX_DEVS);
+
+	int fd = open(path, flags, mode);
+	if (fd == -1)
+		die("Cannot open file %s, reason %s\n", path, strerror(errno));
+
+	int old = term_fds[n][place];
+	if (old != STDIN_FILENO)
+		close(old);
+
+	term_fds[n][place] = fd;
+}
+
+static void term_open_in_file(int n, char *path)
+{
+	try_open_term(n, path, O_RDONLY, TERM_FD_IN, 0);
+}
+
+static void term_open_out_file(int n, char *path)
+{
+	try_open_term(n, path, O_WRONLY | O_CREAT | O_APPEND, TERM_FD_OUT, 0644);
+}
+
+int term_file_parser(const struct option *opt, const char *arg, int unset)
+{
+	int n = -1;
+	char *in = NULL;
+	char *out = NULL;
+	char *line = strdup(arg);
+    char *token;
+
+	for (token = strtok(line, ","); token != NULL; token = strtok(NULL, ",")) {
+		int tmp;
+		if (sscanf(token, "n=%d", &tmp) == 1) {
+			if (n == -1)
+				n = tmp;
+			else
+				die("Terminal number specified multiple times in %s\n", arg);
+		}
+
+		char ptr[PATH_MAX];
+		if (sscanf(token, "in=%s", ptr) == 1) {
+			if (!in)
+				in = strdup(ptr);
+			else
+				die("Terminal input specified multiple times in %s\n", arg);
+		}
+
+		if (sscanf(token, "out=%s", ptr) == 1) {
+			if (!out)
+				out = strdup(ptr);
+			else
+				die("Terminal output specified multiple times in %s\n", arg);
+		}
+	}
+
+
+	if (n == -1)
+		die("Terminal number not specified in %s\n", arg);
+
+	if (!in && !out)
+		die("Terminal has no in or out specified in %s\n", arg);
+
+	if (in)
+		term_open_in_file(n, in);
+
+	if (out)
+		term_open_out_file(n, out);
+
+	free(in);
+	free(out);
+	free(line);
+
+	return 0;
+}
+
 static int term_init(struct kvm *kvm)
 {
 	struct termios term;
 	int i, r;
 
 	for (i = 0; i < TERM_MAX_DEVS; i++)
-		if (term_fds[i][TERM_FD_IN] == 0) {
-			term_fds[i][TERM_FD_IN] = STDIN_FILENO;
+		if (term_fds[i][TERM_FD_OUT] == 0) {
 			term_fds[i][TERM_FD_OUT] = STDOUT_FILENO;
 		}
 
