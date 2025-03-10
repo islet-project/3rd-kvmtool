@@ -226,9 +226,6 @@ static void serial8250__receive(struct kvm *kvm, struct serial8250_device *dev,
 		return;
 	}
 
-	if (kvm->cfg.active_console != CONSOLE_8250)
-		return;
-
 	while (term_readable(dev->id) &&
 	       dev->rxcnt < FIFO_LEN) {
 
