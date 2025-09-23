@@ -17,4 +17,6 @@ void kvm_arm_realm_populate_ram(struct kvm *kvm, void *host_addr,
 
 void realm_log_rec(struct kvm *kvm, u64 flags, u64 pc, u64 gprs[8]);
 
+void kvm_arm_realm_populate_metadata(struct kvm *kvm);
+
 #endif

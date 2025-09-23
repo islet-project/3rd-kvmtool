@@ -23,4 +23,6 @@ static inline void realm_log_rec(struct kvm *kvm, u64 flags, u64 pc, u64
 {
 }
 
+static inline void kvm_arm_realm_populate_metadata(struct kvm *kvm) {}
+
 #endif

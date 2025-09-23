@@ -254,6 +254,24 @@ void kvm_arm_realm_populate_ram(struct kvm *kvm, void *host_addr,
 	list_add_tail(&new_region->list, &next->list);
 }
 
+void kvm_arm_realm_populate_metadata(struct kvm *kvm)
+{
+	if (kvm->arch.metadata == NULL)
+		return;
+
+	struct kvm_enable_cap rme_populate_metadata = {
+		.cap = KVM_CAP_ARM_RME,
+		.args[0] = KVM_CAP_ARM_RME_POPULATE_METADATA,
+		.args[1] = (u64)kvm->arch.metadata
+	};
+
+	if (ioctl(kvm->vm_fd, KVM_ENABLE_CAP, &rme_populate_metadata) < 0)
+		die("unable to populate the realm metadata %p",
+		    kvm->arch.metadata);
+
+	pr_debug("Realm metadata has been populated\n");
+}
+
 static void kvm_arm_realm_activate_realm(struct kvm *kvm)
 {
 	struct kvm_enable_cap activate_realm = {
@@ -318,6 +336,7 @@ static int kvm_arm_realm_finalize(struct kvm *kvm)
 
 	kvm_arm_realm_create_realm_descriptor(kvm);
 	WARN_ON(kvm_arm_log_params(kvm));
+	kvm_arm_realm_populate_metadata(kvm);
 
 	realm_init_ipa_range(kvm, kvm->arch.memory_guest_start, kvm->ram_size);
 
