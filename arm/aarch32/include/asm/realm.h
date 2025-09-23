@@ -17,4 +17,6 @@ static inline void kvm_arm_realm_populate_ram(struct kvm *kvm,
 {
 }
 
+static inline void kvm_arm_realm_populate_metadata(struct kvm *kvm) {}
+
 #endif
