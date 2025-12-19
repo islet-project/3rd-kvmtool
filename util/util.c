@@ -7,9 +7,13 @@
 #include <kvm/kvm.h>
 #include <linux/magic.h>	/* For HUGETLBFS_MAGIC */
 #include <linux/memfd.h>
+#include <linux/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
+#include <stdbool.h>
+#include <ctype.h>
+
 
 static void report(const char *prefix, const char *err, va_list params)
 {
@@ -234,4 +238,56 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 void *mmap_anon_or_hugetlbfs(struct kvm *kvm, const char *hugetlbfs_path, u64 size)
 {
 	return mmap_anon_or_hugetlbfs_align(kvm, hugetlbfs_path, size, 0);
+}
+
+
+bool is_hexadecimal_string(const char *str) {
+    if (str == NULL || *str == '\0') {
+        return false;
+    }
+
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (!isxdigit((unsigned char)str[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static __u8 from_hex_char(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	else if (c >= 'a' && c <= 'f')
+		return c - 'a' + 0xa;
+	else if (c >= 'A' && c <= 'F')
+		return c - 'A' + 0xa;
+	else {
+		die("Not a hexadecimal character!");
+	}
+}
+
+void from_hexadecimal_string(__u8 *dest, const char *hex_str, size_t dest_size)
+{
+	size_t idx = 0;
+	__u8 val;
+
+	if (hex_str == NULL || dest == NULL)
+		return;
+
+	if (strlen(hex_str) % 2 != 0)
+		return;
+
+	while (idx < dest_size && *hex_str != '\0') {
+		val = from_hex_char(*hex_str);
+		val <<= 4;
+		hex_str++;
+
+		val |= from_hex_char(*hex_str);
+		hex_str++;
+
+		dest[idx] = val;
+		idx++;
+	}
 }

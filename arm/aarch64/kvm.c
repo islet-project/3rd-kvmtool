@@ -63,6 +63,8 @@ static void validate_realm_cfg(struct kvm *kvm)
 			die("--measurement-algo valid only with --realm");
 		if (kvm->cfg.arch.realm_pv)
 			die("--realm-pv valid only with --realm");
+		if (kvm->cfg.arch.realm_pv_hex)
+			die("--realm-pv-hex valid only with --realm");
 		if (kvm->cfg.arch.pmu_cntrs >= 0)
 			die("--pmu-counters valid only with --realm");
 		return;
@@ -83,10 +85,24 @@ static void validate_realm_cfg(struct kvm *kvm)
 		kvm->arch.measurement_algo = KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA256;
 	}
 
+	if (kvm->cfg.arch.realm_pv && kvm->cfg.arch.realm_pv_hex) {
+		die("Both --realm-pv and --realm-pv-hex are set\n");
+	}
+
 	if (kvm->cfg.arch.realm_pv) {
 		if (strlen(kvm->cfg.arch.realm_pv) > KVM_CAP_ARM_RME_RPV_SIZE)
 			die("Invalid size for Realm Personalization Value\n");
 	}
+
+	if (kvm->cfg.arch.realm_pv_hex) {
+		pr_debug("Realm Personalization Value (HEX) %s\n", kvm->cfg.arch.realm_pv_hex);
+		if (strlen(kvm->cfg.arch.realm_pv_hex) != KVM_CAP_ARM_RME_RPV_SIZE * 2)
+			die("Invalid size for Realm Personalization Value. Must be 128 characters long hexadecimal string\n");
+		if (!is_hexadecimal_string(kvm->cfg.arch.realm_pv_hex))
+			die("Invalid format of Realm Personalization Value (--realm-pv-hex). Must be hexadecimal string\n");
+	}
+
+	pr_debug("Validation of parameters has passed.\n");
 }
 
 void kvm__arch_validate_cfg(struct kvm *kvm)

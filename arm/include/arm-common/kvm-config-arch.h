@@ -9,6 +9,7 @@ struct kvm_config_arch {
 	const char	*vcpu_affinity;
 	const char	*measurement_algo;
 	const char	*realm_pv;
+	const char	*realm_pv_hex;
 	unsigned int	force_cntfrq;
 	bool		aarch32_guest;
 	bool		has_pmuv3;

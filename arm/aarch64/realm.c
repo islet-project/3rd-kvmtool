@@ -2,6 +2,7 @@
 #include "kvm/kvm.h"
 #include "kvm/kvm-cpu.h"
 #include "kvm/tpm-event-log.h"
+#include "kvm/util.h"
 
 #include "asm/realm.h"
 
@@ -140,11 +141,15 @@ static void realm_configure_rpv(struct kvm *kvm)
 		.args[1] = (u64)&rpv_cfg,
 	};
 
-	if (!kvm->cfg.arch.realm_pv)
+	if (kvm->cfg.arch.realm_pv) {
+		memset(&rpv_cfg.rpv, 0, sizeof(rpv_cfg.rpv));
+		memcpy(&rpv_cfg.rpv, kvm->cfg.arch.realm_pv, strlen(kvm->cfg.arch.realm_pv));
+	} else if (kvm->cfg.arch.realm_pv_hex) {
+		memset(&rpv_cfg.rpv, 0, sizeof(rpv_cfg.rpv));
+		from_hexadecimal_string((__u8*)&rpv_cfg.rpv, kvm->cfg.arch.realm_pv_hex, sizeof(rpv_cfg.rpv));
+	} else {
 		return;
-
-	memset(&rpv_cfg.rpv, 0, sizeof(rpv_cfg.rpv));
-	memcpy(&rpv_cfg.rpv, kvm->cfg.arch.realm_pv, strlen(kvm->cfg.arch.realm_pv));
+	}
 
 	if (ioctl(kvm->vm_fd, KVM_ENABLE_CAP, &rme_config) < 0)
 		die_perror("KVM_CAP_RME(KVM_CAP_ARM_RME_CONFIG_REALM) RPV");
