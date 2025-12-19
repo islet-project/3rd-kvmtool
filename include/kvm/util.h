@@ -150,4 +150,7 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 				   u64 size, u64 align);
 void *mmap_anon_or_hugetlbfs(struct kvm *kvm, const char *hugetlbfs_path, u64 size);
 
+bool is_hexadecimal_string(const char *str);
+void from_hexadecimal_string(__u8 *dest, const char *hex_str, size_t dest_size);
+
 #endif /* KVM__UTIL_H */
