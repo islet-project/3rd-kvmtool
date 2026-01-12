@@ -52,6 +52,7 @@ struct disk_image_params {
 	const char *wwpn;
 	bool readonly;
 	bool direct;
+	bool encryptedstore;
 };
 
 struct disk_image {

@@ -38,10 +38,13 @@ int disk_img_name_parser(const struct option *opt, const char *arg, int unset)
 	do {
 		sep = strstr(cur, ",");
 		if (sep) {
-			if (strncmp(sep + 1, "ro", 2) == 0)
+			if (strncmp(sep + 1, "ro", 2) == 0) {
 				kvm->cfg.disk_image[kvm->nr_disks].readonly = true;
-			else if (strncmp(sep + 1, "direct", 6) == 0)
+			} else if (strncmp(sep + 1, "direct", 6) == 0) {
 				kvm->cfg.disk_image[kvm->nr_disks].direct = true;
+			} else if (strncmp(sep + 1, "encryptedstore", 14) == 0) {
+				kvm->cfg.disk_image[kvm->nr_disks].encryptedstore = true;
+			}
 			*sep = 0;
 			cur = sep + 1;
 		}

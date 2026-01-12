@@ -48,6 +48,10 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <linux/virtio_blk.h>
+#include <sys/uio.h>
+
+#include "kvm/disk-image.h"
 
 #define KB_SHIFT		(10)
 #define MB_SHIFT		(20)
@@ -682,6 +686,95 @@ static void kvm_run_validate_cfg(struct kvm *kvm)
 	kvm__arch_validate_cfg(kvm);
 }
 
+static void kvm_append_kernel_cmdline(struct kvm *kvm, const char *param)
+{
+	const char *old = kvm->cfg.kernel_cmdline; /* --params */
+	size_t oldlen = old ? strlen(old) : 0;
+	size_t addlen = strlen(param);
+	size_t newlen = oldlen + (oldlen ? 1 : 0) + addlen + 1;
+	char *buf = malloc(newlen);
+
+	if (!buf)
+		die("OOM while appending kernel cmdline");
+
+	if (oldlen) {
+		memcpy(buf, old, oldlen);
+		buf[oldlen] = ' ';
+		memcpy(buf + oldlen + 1, param, addlen);
+		buf[oldlen + 1 + addlen] = '\0';
+	} else {
+		memcpy(buf, param, addlen);
+		buf[addlen] = '\0';
+	}
+
+	kvm->cfg.kernel_cmdline = buf;
+}
+
+static void read_disk_get_id_serial(const char *path, char out[VIRTIO_BLK_ID_BYTES + 1])
+{
+	int fd;
+	struct disk_image disk;
+	struct iovec iov;
+	ssize_t n;
+
+	memset(out, 0, VIRTIO_BLK_ID_BYTES + 1);
+
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		die("Failed to open encryptedstore disk '%s': %s", path, strerror(errno));
+
+	memset(&disk, 0, sizeof(disk));
+	disk.fd = fd;
+
+	iov.iov_base = out;
+	iov.iov_len  = VIRTIO_BLK_ID_BYTES;
+
+	n = disk_image__get_serial(&disk, &iov, 1, VIRTIO_BLK_ID_BYTES);
+	close(fd);
+
+	if (n <= 0)
+		die("disk_image__get_serial failed for '%s' (n=%zd)", path, n);
+	if (n > VIRTIO_BLK_ID_BYTES)
+		n = VIRTIO_BLK_ID_BYTES;
+
+	out[n] = '\0';
+}
+
+static void kvm_maybe_inject_encryptedstore_serial(struct kvm *kvm)
+{
+	int i, tagged = -1;
+	const char *path = NULL;
+	char serial[VIRTIO_BLK_ID_BYTES + 1];
+	char param[128];
+
+	/* user already set it via --params */
+	if (kvm->cfg.kernel_cmdline &&
+	    strstr(kvm->cfg.kernel_cmdline, "androidboot.encryptedstore_serial="))
+		return;
+
+	for (i = 0; i < MAX_DISK_IMAGES; i++) {
+		if (!kvm->cfg.disk_image[i].filename)
+			continue;
+		if (!kvm->cfg.disk_image[i].encryptedstore)
+			continue;
+		if (tagged != -1)
+			die("Multiple --disk entries tagged with ',encryptedstore' (ambiguous)");
+		tagged = i;
+		path = kvm->cfg.disk_image[i].filename;
+	}
+
+	if (!path)
+		return; /* no encryptedstore disk */
+
+	read_disk_get_id_serial(path, serial);
+
+	if (!serial[0])
+		return;
+
+	snprintf(param, sizeof(param), "androidboot.encryptedstore_serial=%s", serial);
+	kvm_append_kernel_cmdline(kvm, param);
+}
+
 static struct kvm *kvm_cmd_run_init(int argc, const char **argv)
 {
 	static char default_name[20];
@@ -832,6 +925,9 @@ static struct kvm *kvm_cmd_run_init(int argc, const char **argv)
 		if (kvm_setup_guest_init(kvm->cfg.custom_rootfs_name))
 			die("Failed to setup init for guest.");
 	}
+
+	/* Inject androidboot.encryptedstore_serial=<GET_ID> for ',encryptedstore' disk */
+	kvm_maybe_inject_encryptedstore_serial(kvm);
 
 	if (kvm->cfg.nodefaults)
 		kvm->cfg.real_cmdline = kvm->cfg.kernel_cmdline;
