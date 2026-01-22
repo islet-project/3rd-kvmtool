@@ -710,7 +710,7 @@ static void kvm_append_kernel_cmdline(struct kvm *kvm, const char *param)
 	kvm->cfg.kernel_cmdline = buf;
 }
 
-static void read_disk_get_id_serial(const char *path, char out[VIRTIO_BLK_ID_BYTES + 1])
+static void read_disk_get_id_serial(const char *path, const char *tag, char out[VIRTIO_BLK_ID_BYTES + 1])
 {
 	int fd;
 	struct disk_image disk;
@@ -721,7 +721,7 @@ static void read_disk_get_id_serial(const char *path, char out[VIRTIO_BLK_ID_BYT
 
 	fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
-		die("Failed to open encryptedstore disk '%s': %s", path, strerror(errno));
+		die("Failed to open %s disk '%s': %s", tag, path, strerror(errno));
 
 	memset(&disk, 0, sizeof(disk));
 	disk.fd = fd;
@@ -740,40 +740,85 @@ static void read_disk_get_id_serial(const char *path, char out[VIRTIO_BLK_ID_BYT
 	out[n] = '\0';
 }
 
-static void kvm_maybe_inject_encryptedstore_serial(struct kvm *kvm)
+static const char *disk_role_cmdline_key(enum disk_role role)
+{
+	switch (role) {
+	case DISK_ROLE_ENCRYPTEDSTORE:
+		return "androidboot.encryptedstore_serial";
+	case DISK_ROLE_VM_INSTANCE:
+		return "androidboot.vm_instance_serial";
+	default:
+		return NULL;
+	}
+}
+
+static const char *disk_role_tag(enum disk_role role)
+{
+	switch (role) {
+	case DISK_ROLE_ENCRYPTEDSTORE:
+		return "encryptedstore";
+	case DISK_ROLE_VM_INSTANCE:
+		return "vm-instance";
+	default:
+		return "unknown";
+	}
+}
+
+static void kvm_inject_disk_role_serial(struct kvm *kvm, enum disk_role role)
 {
 	int i, tagged = -1;
 	const char *path = NULL;
 	char serial[VIRTIO_BLK_ID_BYTES + 1];
-	char param[128];
+	char needle[96];
+	char param[160];
+	const char *key = disk_role_cmdline_key(role);
+	const char *tag = disk_role_tag(role);
+
+
+	if (!key)
+		return;
 
 	/* user already set it via --params */
-	if (kvm->cfg.kernel_cmdline &&
-	    strstr(kvm->cfg.kernel_cmdline, "androidboot.encryptedstore_serial="))
-		return;
+	if (kvm->cfg.kernel_cmdline) {
+		snprintf(needle, sizeof(needle), "%s=", key);
+		if (strstr(kvm->cfg.kernel_cmdline, needle))
+			return;
+	}
+
 
 	for (i = 0; i < MAX_DISK_IMAGES; i++) {
 		if (!kvm->cfg.disk_image[i].filename)
 			continue;
-		if (!kvm->cfg.disk_image[i].encryptedstore)
+		if (kvm->cfg.disk_image[i].role != role)
 			continue;
 		if (tagged != -1)
-			die("Multiple --disk entries tagged with ',encryptedstore' (ambiguous)");
+			die("Multiple --disk entries tagged with ',%s' (ambiguous)", tag);
 		tagged = i;
 		path = kvm->cfg.disk_image[i].filename;
 	}
 
 	if (!path)
-		return; /* no encryptedstore disk */
+		return; /* no tagged disk */
 
-	read_disk_get_id_serial(path, serial);
+	read_disk_get_id_serial(path, tag, serial);
 
 	if (!serial[0])
 		return;
 
-	snprintf(param, sizeof(param), "androidboot.encryptedstore_serial=%s", serial);
+	snprintf(param, sizeof(param), "%s=%s", key, serial);
 	kvm_append_kernel_cmdline(kvm, param);
 }
+
+static void kvm_inject_encryptedstore_serial(struct kvm *kvm)
+{
+	kvm_inject_disk_role_serial(kvm, DISK_ROLE_ENCRYPTEDSTORE);
+}
+
+static void kvm_inject_vm_instance_serial(struct kvm *kvm)
+{
+	kvm_inject_disk_role_serial(kvm, DISK_ROLE_VM_INSTANCE);
+}
+
 
 static struct kvm *kvm_cmd_run_init(int argc, const char **argv)
 {
@@ -926,8 +971,8 @@ static struct kvm *kvm_cmd_run_init(int argc, const char **argv)
 			die("Failed to setup init for guest.");
 	}
 
-	/* Inject androidboot.encryptedstore_serial=<GET_ID> for ',encryptedstore' disk */
-	kvm_maybe_inject_encryptedstore_serial(kvm);
+	kvm_inject_encryptedstore_serial(kvm);
+	kvm_inject_vm_instance_serial(kvm);
 
 	if (kvm->cfg.nodefaults)
 		kvm->cfg.real_cmdline = kvm->cfg.kernel_cmdline;

@@ -31,6 +31,12 @@ enum {
 	DISK_IMAGE_MMAP,
 };
 
+enum disk_role {
+	DISK_ROLE_NONE = 0,
+	DISK_ROLE_ENCRYPTEDSTORE,
+	DISK_ROLE_VM_INSTANCE,
+};
+
 #define MAX_DISK_IMAGES         4
 
 struct disk_image;
@@ -52,7 +58,7 @@ struct disk_image_params {
 	const char *wwpn;
 	bool readonly;
 	bool direct;
-	bool encryptedstore;
+	enum disk_role role;
 };
 
 struct disk_image {

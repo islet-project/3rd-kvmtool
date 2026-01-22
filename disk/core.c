@@ -6,26 +6,58 @@
 
 #include <linux/err.h>
 #include <poll.h>
+#include <string.h>
 
 int debug_iodelay;
 
 static int disk_image__close(struct disk_image *disk);
+
+static bool disk_tag_matches(const char *s, const char *tag)
+{
+	size_t n = strlen(tag);
+	return strncmp(s, tag, n) == 0 && (s[n] == '\0' || s[n] == ',');
+}
+
+static const char *disk_role_tag(enum disk_role role)
+{
+	switch (role) {
+	case DISK_ROLE_ENCRYPTEDSTORE:
+		return "encryptedstore";
+	case DISK_ROLE_VM_INSTANCE:
+		return "vm-instance";
+	default:
+		return "none";
+	}
+}
+
+static void disk_params_set_role(struct disk_image_params *p, enum disk_role role)
+{
+	if (p->role == DISK_ROLE_NONE || p->role == role) {
+		p->role = role;
+		return;
+	}
+
+	die("A single --disk entry cannot be tagged as both ',%s' and ',%s'",
+	    disk_role_tag(p->role), disk_role_tag(role));
+}
 
 int disk_img_name_parser(const struct option *opt, const char *arg, int unset)
 {
 	const char *cur;
 	char *sep;
 	struct kvm *kvm = opt->ptr;
+	struct disk_image_params *p;
 
 	if (kvm->nr_disks >= MAX_DISK_IMAGES)
 		die("Currently only 4 images are supported");
 
-	kvm->cfg.disk_image[kvm->nr_disks].filename = arg;
+	p = &kvm->cfg.disk_image[kvm->nr_disks];
+	p->filename = arg;
 	cur = arg;
 
 	if (strncmp(arg, "scsi:", 5) == 0) {
 		sep = strstr(arg, ":");
-		kvm->cfg.disk_image[kvm->nr_disks].wwpn = sep + 1;
+		p->wwpn = sep + 1;
 
 		/* Old invocation had two parameters. Ignore the second one. */
 		sep = strstr(sep + 1, ":");
@@ -38,12 +70,14 @@ int disk_img_name_parser(const struct option *opt, const char *arg, int unset)
 	do {
 		sep = strstr(cur, ",");
 		if (sep) {
-			if (strncmp(sep + 1, "ro", 2) == 0) {
-				kvm->cfg.disk_image[kvm->nr_disks].readonly = true;
-			} else if (strncmp(sep + 1, "direct", 6) == 0) {
-				kvm->cfg.disk_image[kvm->nr_disks].direct = true;
-			} else if (strncmp(sep + 1, "encryptedstore", 14) == 0) {
-				kvm->cfg.disk_image[kvm->nr_disks].encryptedstore = true;
+			if (disk_tag_matches(sep + 1, "ro")) {
+				p->readonly = true;
+			} else if (disk_tag_matches(sep + 1, "direct")) {
+				p->direct = true;
+			} else if (disk_tag_matches(sep + 1, "encryptedstore")) {
+				disk_params_set_role(p, DISK_ROLE_ENCRYPTEDSTORE);
+			} else if (disk_tag_matches(sep + 1, "vm-instance")) {
+				disk_params_set_role(p, DISK_ROLE_VM_INSTANCE);
 			}
 			*sep = 0;
 			cur = sep + 1;
