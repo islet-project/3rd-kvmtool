@@ -104,6 +104,7 @@ struct disk_image *disk_image__new(int fd, u64 size,
 		.fd	= fd,
 		.size	= size,
 		.ops	= ops,
+		.role   = DISK_ROLE_NONE,
 	};
 
 	if (use_mmap == DISK_IMAGE_MMAP) {
@@ -212,7 +213,10 @@ static struct disk_image **disk_image__open_all(struct kvm *kvm)
 				err = ERR_PTR(-ENOMEM);
 				goto error;
 			}
-			disks[i]->wwpn = wwpn;
+			*disks[i] = (struct disk_image) {
+				.wwpn = wwpn,
+				.role = params[i].role,
+			};
 			continue;
 		}
 
@@ -226,6 +230,7 @@ static struct disk_image **disk_image__open_all(struct kvm *kvm)
 			goto error;
 		}
 		disks[i]->debug_iodelay = kvm->cfg.debug_iodelay;
+		disks[i]->role = params[i].role;
 	}
 
 	return disks;
@@ -349,9 +354,41 @@ ssize_t disk_image__write(struct disk_image *disk, u64 sector,
 ssize_t disk_image__get_serial(struct disk_image *disk, struct iovec *iov,
 			       int iovcount, ssize_t len)
 {
+	const char *fixed = NULL;
+	size_t fixed_len, iov_len;
 	struct stat st;
 	void *buf;
 	int r;
+
+	/*
+	 * If the disk is tagged with a role, expose a stable, human-readable
+	 * serial string directly via VIRTIO_BLK_T_GET_ID.
+	 *
+	 * NOTE: We intentionally do NOT change the legacy behavior for non-tagged
+	 * disks here (including the historical length check), per request.
+	 */
+	switch (disk->role) {
+	case DISK_ROLE_ENCRYPTEDSTORE:
+		fixed = "encryptedstore";
+		break;
+	case DISK_ROLE_VM_INSTANCE:
+		fixed = "vm-instance";
+		break;
+	default:
+		break;
+	}
+
+	iov_len = iov_size(iov, iovcount);
+	if (fixed) {
+		fixed_len = strlen(fixed);
+		if (fixed_len > (size_t)len || fixed_len > iov_len) {
+			pr_err("fixed_len is too long: %ld. iov_len: %ld, len: %ld\n",
+				fixed_len, iov_len, len);
+			return -ENOMEM;
+		}
+		memcpy_toiovec(iov, (unsigned char *)fixed, fixed_len);
+		return (ssize_t)fixed_len;
+	}
 
 	r = fstat(disk->fd, &st);
 	if (r)

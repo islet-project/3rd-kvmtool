@@ -70,6 +70,7 @@ struct disk_image {
 	void				(*disk_req_cb)(void *param, long len);
 	bool				readonly;
 	bool				async;
+	enum disk_role			role;
 #ifdef CONFIG_HAS_AIO
 	io_context_t			ctx;
 	int				evt;
