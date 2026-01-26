@@ -9,6 +9,7 @@
 #include "kvm/iovec.h"
 #include "kvm/strbuf.h"
 
+#include <asm-generic/errno-base.h>
 #include <linux/list.h>
 #include <linux/vhost.h>
 #include <linux/virtio_net.h>
@@ -281,6 +282,8 @@ static int virtio_net_request_tap(struct net_dev *ndev, struct ifreq *ifr,
 		strlcpy(ifr->ifr_name, tapname, sizeof(ifr->ifr_name));
 
 	ret = ioctl(ndev->tap_fd, TUNSETIFF, ifr);
+	if (ret < 0 && errno == EEXIST)
+		ret = ioctl(ndev->tap_fd, TUNGETIFF, ifr);
 
 	if (ret >= 0)
 		strlcpy(ndev->tap_name, ifr->ifr_name, sizeof(ndev->tap_name));
@@ -314,6 +317,7 @@ static bool virtio_net__tap_init(struct net_dev *ndev)
 	struct ifreq ifr;
 	const struct virtio_net_params *params = ndev->params;
 	bool skipconf = !!params->tapif;
+	bool nosetip = !!params->nosetip;
 
 	hdr_len = virtio_net_hdr_len(ndev);
 	if (ioctl(ndev->tap_fd, TUNSETVNETHDRSZ, &hdr_len) < 0)
@@ -322,7 +326,7 @@ static bool virtio_net__tap_init(struct net_dev *ndev)
 	if (strcmp(params->script, "none")) {
 		if (virtio_net_exec_script(params->script, ndev->tap_name) < 0)
 			goto fail;
-	} else if (!skipconf) {
+	} else if (!skipconf && !nosetip) {
 		memset(&ifr, 0, sizeof(ifr));
 		strncpy(ifr.ifr_name, ndev->tap_name, sizeof(ifr.ifr_name));
 		sin.sin_addr.s_addr = inet_addr(params->host_ip);
@@ -791,6 +795,8 @@ static int set_net_param(struct kvm *kvm, struct virtio_net_params *p,
 		p->fd = atoi(val);
 	} else if (strcmp(param, "mq") == 0) {
 		p->mq = atoi(val);
+	} else if (strcmp(param, "nosetip") == 0) {
+		p->nosetip = atoi(val);
 	} else
 		die("Unknown network parameter %s", param);
 

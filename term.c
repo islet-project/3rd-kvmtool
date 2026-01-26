@@ -177,7 +177,10 @@ static void try_open_term(int n, char *path, int flags, int place, mode_t mode)
 	if (n >= TERM_MAX_DEVS)
 		die("Only %d terms are available\n", TERM_MAX_DEVS);
 
-	int fd = open(path, flags, mode);
+	int fd = -1;
+	if (sscanf(path, "/proc/self/fd/%d", &fd) != 1) 
+		fd = open(path, flags, mode);
+
 	if (fd == -1)
 		die("Cannot open file %s, reason %s\n", path, strerror(errno));
 
