@@ -13,6 +13,7 @@
 
 #include "asm/pmu.h"
 
+#ifndef RIM_MEASURE
 static bool pmu_has_attr(struct kvm_cpu *vcpu, u64 attr)
 {
 	struct kvm_device_attr pmu_attr = {
@@ -218,9 +219,11 @@ static int find_pmu(struct kvm *kvm)
 
 	return find_pmu_cpumask(kvm, cpumask);
 }
+#endif
 
 int kvm__arch_enable_pmu(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	int i;
 	int pmu_id = -ENXIO;
 	struct kvm_cpu *vcpu;
@@ -249,6 +252,7 @@ int kvm__arch_enable_pmu(struct kvm *kvm)
 		set_pmu_attr(vcpu, NULL, KVM_ARM_VCPU_PMU_V3_INIT);
 		set_pmu_counters(vcpu);
 	}
+#endif
 	return 0;
 }
 

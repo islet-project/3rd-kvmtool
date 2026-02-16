@@ -23,7 +23,13 @@ struct kvm_config_arch {
 	bool		no_pvtime;
 	bool		disable_sve;
 	int		pmu_cntrs;
+	int		num_bps;
+	int		num_wps;
+	int		ipa_size;
 	const char	*metadata_filename;
+#ifdef RIM_MEASURE
+	const char *mpidr;
+#endif
 };
 
 int irqchip_parser(const struct option *opt, const char *arg, int unset);

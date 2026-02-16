@@ -108,6 +108,9 @@ struct kvm_arch {
 	bool	realm_is_active;
 	u8	ipa_bits;
 	u8	*metadata;
+#ifdef RIM_MEASURE
+	u64 *mpidr;
+#endif
 };
 
 #endif /* ARM_COMMON__KVM_ARCH_H */

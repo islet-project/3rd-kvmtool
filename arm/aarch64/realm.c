@@ -6,6 +6,8 @@
 
 #include "asm/realm.h"
 
+#include "measurement/rim-measure.h"
+
 struct realm_ram_region {
 	u64 start;
 	u64 file_end;
@@ -16,6 +18,7 @@ struct realm_ram_region {
 
 static LIST_HEAD(realm_ram_regions);
 
+#ifndef RIM_MEASURE
 struct event_log_vmm_version {
 	char	signature[16];
 	char	name[32];
@@ -111,9 +114,11 @@ void realm_log_rec(struct kvm *kvm, u64 flags, u64 pc, u64 gprs[8])
 
 	WARN_ON(add_event_tag(TAG_REC_CREATE, &create_rec, sizeof(create_rec)));
 }
+#endif
 
 static void realm_configure_hash_algo(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	struct kvm_cap_arm_rme_config_item hash_algo_cfg = {
 		.cfg	= KVM_CAP_ARM_RME_CFG_HASH_ALGO,
 		.hash_algo = kvm->arch.measurement_algo,
@@ -127,10 +132,14 @@ static void realm_configure_hash_algo(struct kvm *kvm)
 
 	if (ioctl(kvm->vm_fd, KVM_ENABLE_CAP, &rme_config) < 0)
 		die_perror("KVM_CAP_RME(KVM_CAP_ARM_RME_CONFIG_REALM) hash_algo");
+#else
+		measurer_realm_configure_hash_algo(kvm->arch.measurement_algo);
+#endif
 }
 
 static void realm_configure_rpv(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	struct kvm_cap_arm_rme_config_item rpv_cfg  = {
 		.cfg	= KVM_CAP_ARM_RME_CFG_RPV,
 	};
@@ -153,28 +162,53 @@ static void realm_configure_rpv(struct kvm *kvm)
 
 	if (ioctl(kvm->vm_fd, KVM_ENABLE_CAP, &rme_config) < 0)
 		die_perror("KVM_CAP_RME(KVM_CAP_ARM_RME_CONFIG_REALM) RPV");
+#endif
 }
 
 static void realm_configure_parameters(struct kvm *kvm)
 {
 	realm_configure_hash_algo(kvm);
 	realm_configure_rpv(kvm);
+
+#ifdef RIM_MEASURE
+	if (kvm->cfg.arch.disable_sve)
+		measurer_realm_configure_sve(0);
+	else if (kvm->cfg.arch.sve_max_vq > 0)
+		measurer_realm_configure_sve(kvm->cfg.arch.sve_max_vq - 1);
+	if (kvm->cfg.arch.pmu_cntrs >= 0)
+		measurer_realm_configure_pmu(kvm->cfg.arch.pmu_cntrs);
+	measurer_realm_configure_num_bps(kvm->cfg.arch.num_bps);
+	measurer_realm_configure_num_wps(kvm->cfg.arch.num_wps);
+
+	/* Configure IPA size if specified */
+	if (kvm->cfg.arch.ipa_size != 0) {
+		measurer_realm_configure_s2sz(kvm->cfg.arch.ipa_size);
+	}
+#endif
 }
 
 static void kvm_arm_realm_create_realm_descriptor(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	struct kvm_enable_cap rme_create_rd = {
 		.cap = KVM_CAP_ARM_RME,
 		.args[0] = KVM_CAP_ARM_RME_CREATE_RD,
 	};
+#endif
 
 	realm_configure_parameters(kvm);
+
+#ifndef RIM_MEASURE
 	if (ioctl(kvm->vm_fd, KVM_ENABLE_CAP, &rme_create_rd) < 0)
 		die_perror("KVM_CAP_RME(KVM_CAP_ARM_RME_CREATE_RD)");
+#else
+	measurer_kvm_arm_realm_create_realm_descriptor();
+#endif
 }
 
 static void realm_init_ipa_range(struct kvm *kvm, u64 start, u64 size)
 {
+#ifndef RIM_MEASURE
 	struct kvm_cap_arm_rme_init_ipa_args init_ipa_args = {
 		.init_ipa_base = start,
 		.init_ipa_size = size
@@ -193,12 +227,17 @@ static void realm_init_ipa_range(struct kvm *kvm, u64 start, u64 size)
 
 	if (kvm->cfg.arch.measurement_log)
 		WARN_ON(realm_log_init_ripas(start, size));
+#else
+	measurer_realm_init_ipa_range(start, start + size);
+#endif
 }
 
 static void __realm_populate(struct kvm *kvm, u64 start, u64 size, bool measured)
 {
 	u64 align_start = ALIGN_DOWN(start, SZ_4K);
 	u64 align_end = ALIGN(start + size, SZ_4K);
+
+#ifndef RIM_MEASURE
 	struct kvm_cap_arm_rme_populate_realm_args populate_args = {
 		.populate_ipa_base = align_start,
 		.populate_ipa_size = align_end - align_start,
@@ -215,6 +254,9 @@ static void __realm_populate(struct kvm *kvm, u64 start, u64 size, bool measured
 		    start, start + size, size);
 	pr_debug("Populated Realm memory area : %llx - %llx (size %llu bytes)",
 		start, start + size, size);
+#else
+	measurer_realm_populate(kvm, align_start, align_end);
+#endif
 }
 
 static void realm_populate(struct kvm *kvm, struct realm_ram_region *region)
@@ -223,12 +265,14 @@ static void realm_populate(struct kvm *kvm, struct realm_ram_region *region)
 			 region->file_end - region->start,
 			 /* measured */ true);
 
+#ifndef RIM_MEASURE
 	if (!kvm->cfg.arch.measurement_log)
 		return;
 
 	WARN_ON(tpm_event_log_add_image(region->image_type, region->host_addr,
 					region->start, region->file_end -
 					region->start));
+#endif
 }
 
 void kvm_arm_realm_populate_ram(struct kvm *kvm, void *host_addr,
@@ -256,6 +300,7 @@ void kvm_arm_realm_populate_ram(struct kvm *kvm, void *host_addr,
 
 void kvm_arm_realm_populate_metadata(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	if (kvm->arch.metadata == NULL)
 		return;
 
@@ -270,10 +315,12 @@ void kvm_arm_realm_populate_metadata(struct kvm *kvm)
 		    kvm->arch.metadata);
 
 	pr_debug("Realm metadata has been populated\n");
+#endif
 }
 
 static void kvm_arm_realm_activate_realm(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	struct kvm_enable_cap activate_realm = {
 		.cap = KVM_CAP_ARM_RME,
 		.args[0] = KVM_CAP_ARM_RME_ACTIVATE_REALM,
@@ -283,8 +330,13 @@ static void kvm_arm_realm_activate_realm(struct kvm *kvm)
 		die_perror("KVM_CAP_ARM_RME(KVM_CAP_ARM_RME_ACTIVATE_REALM)");
 
 	kvm->arch.realm_is_active = true;
+#else
+	measurer_print_rim();
+	exit(0);
+#endif
 }
 
+#ifndef RIM_MEASURE
 static int kvm_arm_log_params(struct kvm *kvm)
 {
 	int ret;
@@ -325,6 +377,7 @@ static int kvm_arm_log_params(struct kvm *kvm)
 
 	return add_event_tag(TAG_REALM_CREATE, &params, sizeof(params));
 }
+#endif
 
 static int kvm_arm_realm_finalize(struct kvm *kvm)
 {
@@ -335,7 +388,9 @@ static int kvm_arm_realm_finalize(struct kvm *kvm)
 		return 0;
 
 	kvm_arm_realm_create_realm_descriptor(kvm);
+#ifndef RIM_MEASURE
 	WARN_ON(kvm_arm_log_params(kvm));
+#endif
 	kvm_arm_realm_populate_metadata(kvm);
 
 	realm_init_ipa_range(kvm, kvm->arch.memory_guest_start, kvm->ram_size);
@@ -354,6 +409,7 @@ static int kvm_arm_realm_finalize(struct kvm *kvm)
 		kvm_cpu__reset_vcpu(kvm->cpus[i]);
 
 
+#ifndef RIM_MEASURE
 	if (kvm->cfg.arch.measurement_log) {
 		WARN_ON(tpm_event_log_add_image(KVM_IMAGE_TYPE_EVENT_LOG, NULL,
 						kvm->arch.event_log_guest_start,
@@ -363,7 +419,7 @@ static int kvm_arm_realm_finalize(struct kvm *kvm)
 				 EVENT_LOG_MAX_SIZE,
 				 /* measured */ false);
 	}
-
+#endif
 	/* Activate and seal the measurement for the realm. */
 	kvm_arm_realm_activate_realm(kvm);
 

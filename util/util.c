@@ -179,6 +179,7 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 	 * if the user specifies a hugetlbfs path.
 	 */
 	if (hugetlbfs_path) {
+		printf("hugetlbfs_path %s\n", hugetlbfs_path);
 		blk_size = get_hugepage_blk_size(hugetlbfs_path);
 
 		if (blk_size == 0 || blk_size > size) {
@@ -194,6 +195,11 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 	/* Create a mapping with room for alignment without allocating. */
 	addr_map = mmap(NULL, total_map, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS,
 			-1, 0);
+
+	if (addr_map == MAP_FAILED) {
+		printf("MMAP FAILED\n");
+	}
+
 	if (addr_map == MAP_FAILED)
 		return MAP_FAILED;
 
@@ -201,8 +207,10 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 		fd = guest_memfd_alloc(kvm, size, hugetlbfs_path, blk_size);
 	else
 		fd = memfd_alloc(kvm, size, hugetlbfs_path, blk_size);
-	if (fd < 0)
+	if (fd < 0) {
+		printf("Restricted mem failed\n");
 		return MAP_FAILED;
+	}
 
 	/* Map the allocated memory in the fd to the specified alignment. */
 	addr_align = (void *)ALIGN((u64)addr_map, align_sz);
@@ -211,6 +219,7 @@ void *mmap_anon_or_hugetlbfs_align(struct kvm *kvm, const char *hugetlbfs_path,
 		if (mmap(addr_align, size,
 			 PROT_RW, MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS, -1, 0) ==
 		    MAP_FAILED) {
+				printf("mmap for realm has failed\n");
 			close(fd);
 			return MAP_FAILED;
 		}

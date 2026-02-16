@@ -28,6 +28,7 @@ bool kvm__arch_cpu_supports_vm(void)
 	return true;
 }
 
+#ifndef RIM_MEASURE
 static void try_increase_mlock_limit(struct kvm *kvm)
 {
 	u64 size = kvm->ram_size;
@@ -85,6 +86,7 @@ static int arm_init_event_log(struct kvm *kvm)
 
 	return tpm_event_log_init(event_log, EVENT_LOG_MAX_SIZE, algo);
 }
+#endif
 
 void kvm__init_ram(struct kvm *kvm)
 {
@@ -116,6 +118,7 @@ void kvm__init_ram(struct kvm *kvm)
 	 * Use mlock2(,,MLOCK_ONFAULT) to allow faulting in pages and thus
 	 * allowing to lazily populate the PAR.
 	 */
+#ifndef RIM_MEASURE
 	if (kvm__is_realm(kvm)) {
 		int ret;
 
@@ -128,6 +131,7 @@ void kvm__init_ram(struct kvm *kvm)
 	}
 
 	madvise(kvm->ram_start, kvm->ram_size, MADV_HUGEPAGE);
+#endif
 
 	phys_start	= kvm->cfg.ram_addr;
 	phys_size	= kvm->ram_size;
@@ -143,18 +147,22 @@ void kvm__init_ram(struct kvm *kvm)
 	pr_debug("RAM created at 0x%llx - 0x%llx (host ram_start 0x%llx)",
 		 phys_start, phys_start + phys_size - 1, (u64)kvm->ram_start);
 
+#ifndef RIM_MEASURE
 	/*
 	 * TODO: make event log optional. When enabled, the DTB and initrd
 	 * addresses move, and do not follow the VM spec
 	 */
 	if (arm_init_event_log(kvm))
 		die("failed to create event log");
+#endif
 }
 
 void kvm__arch_read_term(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	serial8250__update_consoles(kvm);
 	virtio_console__inject_interrupt(kvm);
+#endif
 }
 
 void kvm__arch_set_cmdline(char *cmdline, bool video)
@@ -163,6 +171,7 @@ void kvm__arch_set_cmdline(char *cmdline, bool video)
 
 void kvm__arch_init(struct kvm *kvm)
 {
+#ifndef RIM_MEASURE
 	if (kvm->cfg.restricted_mem)
 	{
 		u64 attr;
@@ -177,13 +186,14 @@ void kvm__arch_init(struct kvm *kvm)
 			die("Private memory not supported");
 		}
 	}
-
+#endif
 	/* Create the virtual GIC. */
 	if (gic__create(kvm, kvm->cfg.arch.irqchip))
 		die("Failed to create virtual GIC");
-
+#ifndef RIM_MEASURE
 	kvm__arch_enable_mte(kvm);
 	kvm__arch_enable_exit_hypcall(kvm);
+#endif
 }
 
 static int kvm__arch_late_init(struct kvm *kvm)
@@ -212,9 +222,10 @@ bool kvm__arch_load_kernel_image(struct kvm *kvm, int fd_kernel, int fd_initrd,
 	 * so we can't just place them at the top of memory.
 	 */
 	limit = kvm->ram_start + min(kvm->ram_size, (u64)SZ_256M) - 1;
+#ifndef RIM_MEASURE
 	if (kvm->arch.event_log_guest_start)
 		limit = guest_flat_to_host(kvm, kvm->arch.event_log_guest_start) - 1;
-
+#endif
 	kern_offset = kvm__arch_get_kern_offset(kvm, fd_kernel);
 	pos = kvm->ram_start + kern_offset;
 	kvm->arch.kern_guest_start = host_to_guest_flat(kvm, pos);
@@ -343,8 +354,10 @@ bool kvm__load_firmware(struct kvm *kvm, const char *firmware_filename)
 	int fd;
 
 	limit = kvm->ram_start + kvm->ram_size;
+#ifndef RIM_MEASURE
 	if (kvm->arch.event_log_guest_start)
 		limit = guest_flat_to_host(kvm, kvm->arch.event_log_guest_start);
+#endif
 
 	/* For default firmware address, lets load it at the begining of RAM */
 	if (fw_addr == 0)
